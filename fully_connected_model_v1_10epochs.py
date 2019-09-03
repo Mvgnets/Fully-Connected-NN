@@ -17,9 +17,8 @@ import os
 print(tf.__version__)
 
 import pathlib
-#data_root = pathlib.Path('/content/drive/My Drive/Images2')
-data_root = pathlib.Path(r'C:\Users\EchoY\OneDrive\Desktop\ProjectData\train\images2')
-test_root = pathlib.Path(r'C:\Users\EchoY\OneDrive\Desktop\ProjectData\train\images2_test')
+data_root = pathlib.Path(r'##PATH TO YOUR TRAINING IMAGES##')
+test_root = pathlib.Path(r'##PATH TO YOUR TESTING IMAGES##')
 print(data_root)
 print(test_root)
 
@@ -45,6 +44,7 @@ train_datagen = keras.preprocessing.image.ImageDataGenerator(
               rescale=1./255,
               validation_split=0.2)
 
+# These convert the images to tensors to feed into the neural network
 train_generator = train_datagen.flow_from_directory(
   directory=data_root,
   target_size=(image_size, image_size),
@@ -80,6 +80,7 @@ test_generator = test_datagen.flow_from_directory(
   seed=42
 )
 
+# This section isn't vital but allows performance monitoring and graph plotting of training data over time
 class CollectBatchStats(tf.keras.callbacks.Callback):
 def __init__(self):
   self.batch_losses = []
@@ -89,31 +90,57 @@ def on_train_batch_end(self, batch, logs=None):
   self.batch_losses.append(logs['loss'])
   self.batch_acc.append(logs['acc'])
   self.model.reset_metrics()
-    
+
+# Model definition
 model = Sequential()
 model.add(Flatten(input_shape=(image_size, image_size, 3)))
 model.add(Dense(128, activation='relu'))
 model.add(Dense(10, activation='softmax'))
 model.summary()
 
+# Compile
 model.compile(loss = keras.losses.categorical_crossentropy,
                      optimizer='adam',
                      metrics=['accuracy'])
 
 batch_stats_callback = CollectBatchStats()
 
-checkpoint_path = r"C:\Users\EchoY\OneDrive\Desktop\ProjectData\train\full_connected_model_v1_10epochs\cp.ckpt"
+checkpoint_path = r"##CHECKPOINT SAVE PATH##\cp.ckpt"
 checkpoint_dir = os.path.dirname(checkpoint_path)
 
 # Create checkpoint callback
 cp_callback = tf.keras.callbacks.ModelCheckpoint(checkpoint_path,
                                                  save_weights_only=True,
                                                  verbose=1)
-
+# Use the generators to fit the model 
 model.fit_generator(train_generator,
                     steps_per_epoch = train_generator.samples // batch_size,
                     validation_data = validation_generator, 
                     validation_steps = validation_generator.samples // batch_size,
                     epochs = 10,
                     callbacks = [cp_callback, batch_stats_callback])
-model.save(r'C:\Users\EchoY\OneDrive\Desktop\ProjectData\train\full_connected_model_v1_10epochs\my_model.h5')
+model.save(r'##TRAINED MODEL SAVE PATH##\my_model.h5')
+
+STEP_SIZE_TRAIN=train_generator.n//train_generator.batch_size
+STEP_SIZE_VALID=validation_generator.n//validation_generator.batch_size
+
+model.evaluate_generator(generator=validation_generator,
+steps=STEP_SIZE_VALID)
+
+STEP_SIZE_TEST=test_generator.n//test_generator.batch_size
+test_generator.reset()
+pred=model.predict_generator(test_generator,
+steps=STEP_SIZE_TEST,
+verbose=1)
+
+predicted_class_indices=np.argmax(pred,axis=1)
+
+labels = (train_generator.class_indices)
+labels = dict((v,k) for k,v in labels.items())
+predictions = [labels[k] for k in predicted_class_indices]
+
+#Create a new CSV of the file name and it's predicted class. This code is handy for Kaggle submissions
+filenames=test_generator.filenames
+results=pd.DataFrame({"Filename":filenames,
+                      "Predictions":predictions})
+results.to_csv(r"##RESULTS CSV SAVE PATH##\results.csv",index=False)
